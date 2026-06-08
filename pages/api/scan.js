@@ -1,263 +1,50 @@
-import Anthropic from "@anthropic-ai/sdk";
+# Claude SDK for Python
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+[![PyPI version](https://img.shields.io/pypi/v/anthropic.svg)](https://pypi.org/project/anthropic/)
 
-export default async function handler(req, res) {
-  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
+The Claude SDK for Python provides access to the [Claude API](https://docs.anthropic.com/en/api/) from Python applications.
 
-  const { type } = req.body; // "publishers" or "advertisers"
+## Documentation
 
-  const PUBLISHERS = [
-    { rank: 1,  name: "News Corp Australia",           domain: "news.com.au",               country: "AU", category: "News", tier: 1, parent: "News Corp" },
-    { rank: 2,  name: "ABC",                           domain: "abc.net.au",                country: "AU", category: "News", tier: 1, parent: "Government/Public" },
-    { rank: 3,  name: "Nine Entertainment",            domain: "smh.com.au",                country: "AU", category: "News", tier: 1, parent: "Nine" },
-    { rank: 4,  name: "Seven West Media",              domain: "7news.com.au",              country: "AU", category: "News", tier: 1, parent: "Seven" },
-    { rank: 5,  name: "The Guardian Australia",        domain: "theguardian.com",           country: "AU", category: "News", tier: 1, parent: "Guardian Media" },
-    { rank: 6,  name: "Australian Community Media",    domain: "theherald.com.au",          country: "AU", category: "News", tier: 1, parent: "ACM" },
-    { rank: 7,  name: "Taste.com.au",                  domain: "taste.com.au",              country: "AU", category: "Lifestyle", tier: 2, parent: "News Corp" },
-    { rank: 8,  name: "Vogue Australia",               domain: "vogue.com.au",              country: "AU", category: "Lifestyle", tier: 2, parent: "Condé Nast" },
-    { rank: 9,  name: "Coles / Flybuys",               domain: "coles.com.au",              country: "AU", category: "Retail Media", tier: 2, parent: "Coles Group" },
-    { rank: 10, name: "Woolworths Group",              domain: "woolworths.com.au",         country: "AU", category: "Retail Media", tier: 2, parent: "Woolworths" },
-    { rank: 11, name: "Amazon Australia",              domain: "amazon.com.au",             country: "AU", category: "Retail Media", tier: 2, parent: "Amazon" },
-    { rank: 12, name: "Domain Group",                  domain: "domain.com.au",             country: "AU", category: "Property", tier: 2, parent: "Nine" },
-    { rank: 13, name: "REA Group",                     domain: "realestate.com.au",         country: "AU", category: "Property", tier: 2, parent: "REA Group" },
-    { rank: 14, name: "Seek Limited",                  domain: "seek.com.au",               country: "AU", category: "Classifieds", tier: 2, parent: "Seek" },
-    { rank: 15, name: "Yahoo Australia",               domain: "au.yahoo.com",              country: "AU", category: "Portal", tier: 2, parent: "Yahoo" },
-    { rank: 16, name: "ESPN Australia",                domain: "espn.com.au",               country: "AU", category: "Sport", tier: 3, parent: "Disney/ESPN" },
-    { rank: 17, name: "Fox Sports",                    domain: "foxsports.com.au",          country: "AU", category: "Sport", tier: 3, parent: "News Corp" },
-    { rank: 18, name: "Gamer Network AU",              domain: "eurogamer.net",             country: "AU", category: "Gaming", tier: 3, parent: "Gamer Network" },
-    { rank: 19, name: "Metacritic / IMDb",             domain: "metacritic.com",            country: "AU", category: "Entertainment", tier: 3, parent: "Various" },
-    { rank: 20, name: "Reddit Australia",              domain: "reddit.com",                country: "AU", category: "Community", tier: 3, parent: "Reddit Inc" },
-    { rank: 21, name: "Wikipedia",                     domain: "wikipedia.org",             country: "AU", category: "Reference", tier: 3, parent: "Wikimedia" },
-    { rank: 22, name: "Fandom",                        domain: "fandom.com",                country: "AU", category: "Entertainment", tier: 3, parent: "Fandom Inc" },
-    { rank: 23, name: "Rotten Tomatoes",               domain: "rottentomatoes.com",        country: "AU", category: "Entertainment", tier: 3, parent: "Warner Bros." },
-    { rank: 24, name: "IMDb",                          domain: "imdb.com",                  country: "AU", category: "Entertainment", tier: 3, parent: "Amazon" },
-    { rank: 25, name: "Australian Financial Review",   domain: "afr.com",                   country: "AU", category: "Finance/Business", tier: 4, parent: "Nine" },
-    { rank: 26, name: "Bloomberg Australia",           domain: "bloomberg.com",             country: "AU", category: "Finance/Business", tier: 4, parent: "Bloomberg" },
-    { rank: 27, name: "Financial Times AU",            domain: "ft.com",                    country: "AU", category: "Finance/Business", tier: 4, parent: "Nikkei" },
-    { rank: 28, name: "Wall Street Journal AU",        domain: "wsj.com",                   country: "AU", category: "Finance/Business", tier: 4, parent: "News Corp" },
-    { rank: 29, name: "MarketWatch",                   domain: "marketwatch.com",           country: "AU", category: "Finance/Business", tier: 4, parent: "News Corp" },
-    { rank: 30, name: "Investor.com.au",               domain: "investor.com.au",           country: "AU", category: "Finance/Business", tier: 4, parent: "Independent" },
-    { rank: 31, name: "Corporate Governance Institute",domain: "cgiglobal.com",             country: "AU", category: "B2B/Professional", tier: 4, parent: "CGI" },
-    { rank: 32, name: "IBISWorld",                     domain: "ibisworld.com",             country: "AU", category: "B2B/Professional", tier: 4, parent: "IBISWorld" },
-    { rank: 33, name: "Jotform",                       domain: "jotform.com",               country: "AU", category: "B2B/Tools", tier: 4, parent: "Jotform Inc" },
-    { rank: 34, name: "Healthline Australia",          domain: "healthline.com",            country: "AU", category: "Health", tier: 5, parent: "Dotdash Meredith" },
-    { rank: 35, name: "WebMD",                         domain: "webmd.com",                 country: "AU", category: "Health", tier: 5, parent: "WebMD Health" },
-    { rank: 36, name: "Mayo Clinic",                   domain: "mayoclinic.org",            country: "AU", category: "Health", tier: 5, parent: "Mayo Clinic" },
-    { rank: 37, name: "Psychology Today",              domain: "psychologytoday.com",       country: "AU", category: "Health", tier: 5, parent: "Sussex Publishers" },
-    { rank: 38, name: "MedicineNet",                   domain: "medicinenet.com",           country: "AU", category: "Health", tier: 5, parent: "WebMD Health" },
-    { rank: 39, name: "University of Melbourne",       domain: "melbourne.edu.au",          country: "AU", category: "Education", tier: 5, parent: "UniMelb" },
-    { rank: 40, name: "University of Sydney",          domain: "sydney.edu.au",             country: "AU", category: "Education", tier: 5, parent: "USyd" },
-    { rank: 41, name: "Khan Academy",                  domain: "khanacademy.org",           country: "AU", category: "Education", tier: 5, parent: "Khan Academy" },
-    { rank: 42, name: "Udemy",                         domain: "udemy.com",                 country: "AU", category: "Education", tier: 5, parent: "Udemy Inc" },
-    { rank: 43, name: "TripAdvisor Australia",         domain: "tripadvisor.com.au",        country: "AU", category: "Travel", tier: 6, parent: "Tripadvisor" },
-    { rank: 44, name: "Airbnb Australia",              domain: "airbnb.com.au",             country: "AU", category: "Travel", tier: 6, parent: "Airbnb" },
-    { rank: 45, name: "Booking.com",                   domain: "booking.com",               country: "AU", category: "Travel", tier: 6, parent: "Booking Holdings" },
-    { rank: 46, name: "Agoda",                         domain: "agoda.com",                 country: "AU", category: "Travel", tier: 6, parent: "Booking Holdings" },
-    { rank: 47, name: "Qantas",                        domain: "qantas.com",                country: "AU", category: "Travel", tier: 6, parent: "Qantas" },
-    { rank: 48, name: "Tourism Australia",             domain: "australia.com",             country: "AU", category: "Travel", tier: 6, parent: "Government" },
-    { rank: 49, name: "Uber Eats Australia",           domain: "ubereats.com",              country: "AU", category: "Food/Delivery", tier: 6, parent: "Uber" },
-    { rank: 50, name: "Menulog",                       domain: "menulog.com.au",            country: "AU", category: "Food/Delivery", tier: 6, parent: "Just Eat" },
-    { rank: 51, name: "Stuff Limited",                 domain: "stuff.co.nz",               country: "NZ", category: "News", tier: 1, parent: "Stuff Ltd" },
-    { rank: 52, name: "NZME / NZ Herald",              domain: "nzherald.co.nz",            country: "NZ", category: "News", tier: 1, parent: "NZME" },
-    { rank: 53, name: "RNZ",                           domain: "rnz.co.nz",                 country: "NZ", category: "News", tier: 1, parent: "Radio NZ" },
-    { rank: 54, name: "Mediaworks NZ",                 domain: "newstalkzb.co.nz",          country: "NZ", category: "News", tier: 1, parent: "Mediaworks" },
-    { rank: 55, name: "The Post (Stuff)",              domain: "thepost.co.nz",             country: "NZ", category: "News", tier: 1, parent: "Stuff Ltd" },
-    { rank: 56, name: "Newsroom NZ",                   domain: "newsroom.co.nz",            country: "NZ", category: "News", tier: 2, parent: "Independent" },
-    { rank: 57, name: "The Spinoff",                   domain: "thespinoff.co.nz",          country: "NZ", category: "Digital Native", tier: 2, parent: "Independent" },
-    { rank: 58, name: "Stuff Entertainment",           domain: "entertainment.stuff.co.nz", country: "NZ", category: "Entertainment", tier: 2, parent: "Stuff Ltd" },
-    { rank: 59, name: "Newshub",                       domain: "newshub.co.nz",             country: "NZ", category: "News", tier: 2, parent: "Mediaworks" },
-    { rank: 60, name: "Radio New Zealand Music",       domain: "radionz.co.nz",             country: "NZ", category: "Entertainment", tier: 2, parent: "Radio NZ" },
-    { rank: 61, name: "Metro Magazine NZ",             domain: "metromag.co.nz",            country: "NZ", category: "Lifestyle", tier: 3, parent: "Independent" },
-    { rank: 62, name: "Cuisine Magazine NZ",           domain: "cuisine.co.nz",             country: "NZ", category: "Lifestyle", tier: 3, parent: "Independent" },
-    { rank: 63, name: "North & South",                 domain: "northandsouth.com",         country: "NZ", category: "Lifestyle", tier: 3, parent: "Independent" },
-    { rank: 64, name: "Salient",                       domain: "salient.org.nz",            country: "NZ", category: "Culture", tier: 3, parent: "Victoria Uni" },
-    { rank: 65, name: "NZ House & Garden",             domain: "homestyle.co.nz",           country: "NZ", category: "Lifestyle", tier: 3, parent: "Independent" },
-    { rank: 66, name: "NBR",                           domain: "nbr.co.nz",                 country: "NZ", category: "Finance/Business", tier: 4, parent: "Independent" },
-    { rank: 67, name: "BusinessDesk NZ",               domain: "businessdesk.co.nz",        country: "NZ", category: "Finance/Business", tier: 4, parent: "Independent" },
-    { rank: 68, name: "Interest.co.nz",                domain: "interest.co.nz",            country: "NZ", category: "Finance/Business", tier: 4, parent: "Independent" },
-    { rank: 69, name: "Intelligent Investor NZ",       domain: "nz.intelligentinvestor.com.au", country: "NZ", category: "Finance/Business", tier: 4, parent: "InvestSMART" },
-    { rank: 70, name: "Properti NZ",                   domain: "properti.co.nz",            country: "NZ", category: "Property", tier: 4, parent: "Independent" },
-    { rank: 71, name: "Trade Me",                      domain: "trademe.co.nz",             country: "NZ", category: "Classifieds", tier: 5, parent: "Apax Partners" },
-    { rank: 72, name: "Sky Sports NZ",                 domain: "skysports.co.nz",           country: "NZ", category: "Sport", tier: 5, parent: "Sky NZ" },
-    { rank: 73, name: "Eventfinda",                    domain: "eventfinda.co.nz",          country: "NZ", category: "Events", tier: 5, parent: "Independent" },
-    { rank: 74, name: "Central Otago Wine",            domain: "centralotagowine.nz",       country: "NZ", category: "Tourism", tier: 5, parent: "Industry Body" },
-    { rank: 75, name: "Beehive.govt.nz",               domain: "beehive.govt.nz",           country: "NZ", category: "Government", tier: 6, parent: "NZ Government" },
-    { rank: 76, name: "University of Auckland",        domain: "auckland.ac.nz",            country: "NZ", category: "Education", tier: 6, parent: "University" },
-    { rank: 77, name: "University of Canterbury",      domain: "canterbury.ac.nz",          country: "NZ", category: "Education", tier: 6, parent: "University" },
-    { rank: 78, name: "University of Otago",           domain: "otago.ac.nz",               country: "NZ", category: "Education", tier: 6, parent: "University" },
-    { rank: 79, name: "Te Ara",                        domain: "teara.govt.nz",             country: "NZ", category: "Reference", tier: 6, parent: "NZ Government" },
-    { rank: 80, name: "Maori.com",                     domain: "maori.com",                 country: "NZ", category: "Cultural", tier: 6, parent: "Independent" },
-    { rank: 81, name: "Google AU/NZ",                  domain: "google.com.au",             country: "ANZ", category: "Search/Aggregator", tier: 1, parent: "Alphabet" },
-    { rank: 82, name: "YouTube",                       domain: "youtube.com",               country: "ANZ", category: "Video", tier: 1, parent: "Alphabet" },
-    { rank: 83, name: "Facebook / Meta",               domain: "facebook.com",              country: "ANZ", category: "Social", tier: 1, parent: "Meta" },
-    { rank: 84, name: "Instagram",                     domain: "instagram.com",             country: "ANZ", category: "Social", tier: 1, parent: "Meta" },
-    { rank: 85, name: "TikTok",                        domain: "tiktok.com",                country: "ANZ", category: "Social/Video", tier: 1, parent: "ByteDance" },
-    { rank: 86, name: "Reddit",                        domain: "reddit.com",                country: "ANZ", category: "Community", tier: 1, parent: "Reddit Inc" },
-    { rank: 87, name: "Amazon ANZ",                    domain: "amazon.com.au",             country: "ANZ", category: "Retail Media", tier: 1, parent: "Amazon" },
-    { rank: 88, name: "Apple News+",                   domain: "apple.com",                 country: "ANZ", category: "News Aggregator", tier: 2, parent: "Apple" },
-    { rank: 89, name: "Spotify",                       domain: "spotify.com",               country: "ANZ", category: "Audio", tier: 2, parent: "Spotify" },
-    { rank: 90, name: "LinkedIn",                      domain: "linkedin.com",              country: "ANZ", category: "Professional Network", tier: 2, parent: "Microsoft" },
-    { rank: 91, name: "X / Twitter",                   domain: "x.com",                     country: "ANZ", category: "Social", tier: 2, parent: "X Corp" },
-    { rank: 92, name: "The Australian",                domain: "theaustralian.com.au",      country: "AU", category: "News", tier: 1, parent: "News Corp" },
-    { rank: 93, name: "Herald Sun",                    domain: "heraldsun.com.au",          country: "AU", category: "News", tier: 1, parent: "News Corp" },
-    { rank: 94, name: "Daily Telegraph",               domain: "dailytelegraph.com.au",     country: "AU", category: "News", tier: 1, parent: "News Corp" },
-    { rank: 95, name: "Courier-Mail",                  domain: "couriermail.com.au",        country: "AU", category: "News", tier: 1, parent: "News Corp" },
-    { rank: 96, name: "Nine News",                     domain: "9news.com.au",              country: "AU", category: "News", tier: 1, parent: "Nine" },
-    { rank: 97, name: "Sky News Australia",            domain: "skynews.com.au",            country: "AU", category: "News", tier: 1, parent: "News Corp" },
-    { rank: 98, name: "Pedestrian Group",              domain: "pedestrian.tv",             country: "AU", category: "Youth/Culture", tier: 2, parent: "Nine" },
-    { rank: 99, name: "Mamamia",                       domain: "mamamia.com.au",            country: "AU", category: "Women's Lifestyle", tier: 2, parent: "Mamamia" },
-    { rank: 100,name: "SBS",                           domain: "sbs.com.au",                country: "AU", category: "News", tier: 1, parent: "Government/Public" },
-  ];
+Full documentation is available at **[platform.claude.com/docs/en/api/sdks/python](https://platform.claude.com/docs/en/api/sdks/python)**.
 
-  const ADVERTISERS = [
-    { rank: 1,  name: "Harvey Norman",        domain: "harveynorman.com.au",     category: "Retail" },
-    { rank: 2,  name: "Reckitt Benckiser",    domain: "reckitt.com",             category: "FMCG" },
-    { rank: 3,  name: "Amazon Australia",     domain: "amazon.com.au",           category: "Retail" },
-    { rank: 4,  name: "Hungry Jack's",        domain: "hungryjacks.com.au",      category: "QSR" },
-    { rank: 5,  name: "Westpac",              domain: "westpac.com.au",          category: "Finance" },
-    { rank: 6,  name: "McDonald's Australia", domain: "mcdonalds.com.au",        category: "QSR" },
-    { rank: 7,  name: "Chemist Warehouse",    domain: "chemistwarehouse.com.au", category: "Retail" },
-    { rank: 8,  name: "Commonwealth Bank",    domain: "commbank.com.au",         category: "Finance" },
-    { rank: 9,  name: "Woolworths",           domain: "woolworths.com.au",       category: "Retail" },
-    { rank: 10, name: "Coles",                domain: "coles.com.au",            category: "Retail" },
-    { rank: 11, name: "Youi Insurance",       domain: "youi.com.au",             category: "Insurance" },
-    { rank: 12, name: "Big W",                domain: "bigw.com.au",             category: "Retail" },
-    { rank: 13, name: "Disney",               domain: "disney.com.au",           category: "Entertainment" },
-    { rank: 14, name: "Mondelez",             domain: "mondelezinternational.com",category: "FMCG" },
-    { rank: 15, name: "Qantas",               domain: "qantas.com",              category: "Travel" },
-    { rank: 16, name: "Stan Entertainment",   domain: "stan.com.au",             category: "Entertainment" },
-    { rank: 17, name: "Budget Direct",        domain: "budgetdirect.com.au",     category: "Insurance" },
-    { rank: 18, name: "Nestlé Australia",     domain: "nestle.com.au",           category: "FMCG" },
-    { rank: 19, name: "Allianz Australia",    domain: "allianz.com.au",          category: "Insurance" },
-    { rank: 20, name: "Kia Australia",        domain: "kia.com/au",              category: "Auto" },
-    { rank: 21, name: "ANZ Bank",             domain: "anz.com.au",              category: "Finance" },
-    { rank: 22, name: "NAB",                  domain: "nab.com.au",              category: "Finance" },
-    { rank: 23, name: "Telstra",              domain: "telstra.com.au",          category: "Telco" },
-    { rank: 24, name: "Optus",                domain: "optus.com.au",            category: "Telco" },
-    { rank: 25, name: "Toyota Australia",     domain: "toyota.com.au",           category: "Auto" },
-    { rank: 26, name: "Mitsubishi Australia", domain: "mitsubishi-motors.com.au",category: "Auto" },
-    { rank: 27, name: "Uber",                 domain: "uber.com",                category: "Tech/Mobility" },
-    { rank: 28, name: "Apple",                domain: "apple.com",               category: "Tech" },
-    { rank: 29, name: "KFC Australia",        domain: "kfc.com.au",              category: "QSR" },
-    { rank: 30, name: "Virgin Australia",     domain: "virginaustralia.com",     category: "Travel" },
-    { rank: 31, name: "Jetstar",              domain: "jetstar.com",             category: "Travel" },
-    { rank: 32, name: "NRMA Insurance",       domain: "nrma.com.au",             category: "Insurance" },
-    { rank: 33, name: "AAMI",                 domain: "aami.com.au",             category: "Insurance" },
-    { rank: 34, name: "Suncorp",              domain: "suncorp.com.au",          category: "Insurance" },
-    { rank: 35, name: "American Express",     domain: "americanexpress.com/au",  category: "Finance" },
-    { rank: 36, name: "Samsung Australia",    domain: "samsung.com/au",          category: "Tech" },
-    { rank: 37, name: "Mazda Australia",      domain: "mazda.com.au",            category: "Auto" },
-    { rank: 38, name: "Hyundai Australia",    domain: "hyundai.com/au",          category: "Auto" },
-    { rank: 39, name: "IGA / Metcash",        domain: "iga.com.au",              category: "Retail" },
-    { rank: 40, name: "Aldi Australia",       domain: "aldi.com.au",             category: "Retail" },
-    { rank: 41, name: "Bankwest",             domain: "bankwest.com.au",         category: "Finance" },
-    { rank: 42, name: "Macquarie Bank",       domain: "macquarie.com",           category: "Finance" },
-    { rank: 43, name: "AMP",                  domain: "amp.com.au",              category: "Finance" },
-    { rank: 44, name: "Aware Super",          domain: "aware.com.au",            category: "Finance" },
-    { rank: 45, name: "REST Super",           domain: "rest.com.au",             category: "Finance" },
-    { rank: 46, name: "BUPA Australia",       domain: "bupa.com.au",             category: "Health" },
-    { rank: 47, name: "Medibank",             domain: "medibank.com.au",         category: "Health" },
-    { rank: 48, name: "NIB Health Funds",     domain: "nib.com.au",              category: "Health" },
-    { rank: 49, name: "HCF",                  domain: "hcf.com.au",              category: "Health" },
-    { rank: 50, name: "Menulog",              domain: "menulog.com.au",          category: "Tech/Delivery" },
-    { rank: 51, name: "DoorDash Australia",   domain: "doordash.com",            category: "Tech/Delivery" },
-    { rank: 52, name: "Seek",                 domain: "seek.com.au",             category: "Tech" },
-    { rank: 53, name: "REA Group",            domain: "realestate.com.au",       category: "Property" },
-    { rank: 54, name: "Domain",               domain: "domain.com.au",           category: "Property" },
-    { rank: 55, name: "Volkswagen Australia", domain: "volkswagen.com.au",       category: "Auto" },
-    { rank: 56, name: "BMW Australia",        domain: "bmw.com.au",              category: "Auto" },
-    { rank: 57, name: "Ford Australia",       domain: "ford.com.au",             category: "Auto" },
-    { rank: 58, name: "Lexus Australia",      domain: "lexus.com.au",            category: "Auto" },
-    { rank: 59, name: "Mercedes-Benz AU",     domain: "mercedes-benz.com.au",    category: "Auto" },
-    { rank: 60, name: "Audi Australia",       domain: "audi.com.au",             category: "Auto" },
-    { rank: 61, name: "Subway Australia",     domain: "subway.com",              category: "QSR" },
-    { rank: 62, name: "Domino's Australia",   domain: "dominos.com.au",          category: "QSR" },
-    { rank: 63, name: "Nando's Australia",    domain: "nandos.com.au",           category: "QSR" },
-    { rank: 64, name: "Procter & Gamble",     domain: "pg.com",                  category: "FMCG" },
-    { rank: 65, name: "Unilever Australia",   domain: "unilever.com",            category: "FMCG" },
-    { rank: 66, name: "Kellogg's Australia",  domain: "kelloggs.com.au",         category: "FMCG" },
-    { rank: 67, name: "Lion Beverages",       domain: "lionco.com",              category: "FMCG" },
-    { rank: 68, name: "Coopers Brewery",      domain: "coopers.com.au",          category: "FMCG" },
-    { rank: 69, name: "Bunnings Warehouse",   domain: "bunnings.com.au",         category: "Retail" },
-    { rank: 70, name: "JB Hi-Fi",             domain: "jbhifi.com.au",           category: "Retail" },
-    { rank: 71, name: "Kmart Australia",      domain: "kmart.com.au",            category: "Retail" },
-    { rank: 72, name: "Target Australia",     domain: "target.com.au",           category: "Retail" },
-    { rank: 73, name: "Myer",                 domain: "myer.com.au",             category: "Retail" },
-    { rank: 74, name: "David Jones",          domain: "davidjones.com",          category: "Retail" },
-    { rank: 75, name: "The Good Guys",        domain: "thegoodguys.com.au",      category: "Retail" },
-    { rank: 76, name: "Officeworks",          domain: "officeworks.com.au",      category: "Retail" },
-    { rank: 77, name: "Petstock",             domain: "petstock.com.au",         category: "Retail" },
-    { rank: 78, name: "Tourism Australia",    domain: "australia.com",           category: "Government/Tourism" },
-    { rank: 79, name: "NSW Government",       domain: "nsw.gov.au",              category: "Government" },
-    { rank: 80, name: "Federal Government",   domain: "australia.gov.au",        category: "Government" },
-    { rank: 81, name: "Foxtel",               domain: "foxtel.com.au",           category: "Entertainment" },
-    { rank: 82, name: "Kayo Sports",          domain: "kayosports.com.au",       category: "Entertainment" },
-    { rank: 83, name: "Netflix Australia",    domain: "netflix.com",             category: "Entertainment" },
-    { rank: 84, name: "Spotify Australia",    domain: "spotify.com",             category: "Tech" },
-    { rank: 85, name: "Google Australia",     domain: "google.com.au",           category: "Tech" },
-    { rank: 86, name: "Microsoft Australia",  domain: "microsoft.com",           category: "Tech" },
-    { rank: 87, name: "Canva",                domain: "canva.com",               category: "Tech" },
-    { rank: 88, name: "Afterpay",             domain: "afterpay.com",            category: "Fintech" },
-    { rank: 89, name: "PayPal Australia",     domain: "paypal.com",              category: "Fintech" },
-    { rank: 90, name: "Zip Co",               domain: "zip.co",                  category: "Fintech" },
-    { rank: 91, name: "IAG Insurance",        domain: "iag.com.au",              category: "Insurance" },
-    { rank: 92, name: "QBE Insurance",        domain: "qbe.com",                 category: "Insurance" },
-    { rank: 93, name: "TAB / Tabcorp",        domain: "tab.com.au",              category: "Gambling" },
-    { rank: 94, name: "Sportsbet",            domain: "sportsbet.com.au",        category: "Gambling" },
-    { rank: 95, name: "Ladbrokes Australia",  domain: "ladbrokes.com.au",        category: "Gambling" },
-    { rank: 96, name: "Airbnb Australia",     domain: "airbnb.com.au",           category: "Travel" },
-    { rank: 97, name: "Booking.com AU",       domain: "booking.com",             category: "Travel" },
-    { rank: 98, name: "Flight Centre",        domain: "flightcentre.com.au",     category: "Travel" },
-    { rank: 99, name: "Compare the Market",   domain: "comparethemarket.com.au", category: "Insurance/Comparison" },
-    { rank: 100,name: "iSelect",              domain: "iselect.com.au",          category: "Insurance/Comparison" },
-  ];
+## Installation
 
-  const entities = type === "publishers" ? PUBLISHERS : ADVERTISERS;
-  const fileType = type === "publishers" ? "adagents.json" : "brand.json";
-  const isPublisher = type === "publishers";
+```sh
+pip install anthropic
+```
 
-  const list = entities.map((e, i) =>
-    isPublisher
-      ? `${i + 1}. ${e.domain} — ${e.name} (${e.category}, ${e.country}, Tier ${e.tier}, Parent: ${e.parent})`
-      : `${i + 1}. ${e.domain} — ${e.name} (${e.category})`
-  ).join("\n");
+## Getting started
 
-  const prompt = isPublisher
-    ? `You are an AdCP expert. Assess whether each of these 100 ANZ publishers likely has an adagents.json file at /.well-known/adagents.json as of May 2026.
+```python
+import os
+from anthropic import Anthropic
 
-Known AdCP founding/launch members (likely live): Yahoo (au.yahoo.com), PubMatic, Magnite, Scope3, Swivel, Triton Digital, Optable, Kargo, Raptive, LG Ad Solutions, The Weather Company, AccuWeather, Butler/Till.
+client = Anthropic(
+    api_key=os.environ.get("ANTHROPIC_API_KEY"),  # This is the default and can be omitted
+)
 
-Rules: Yahoo Australia = live. Major global platforms (Google, YouTube, Facebook, TikTok, Reddit, Amazon, Spotify, Apple, LinkedIn, X) = possible. All ANZ news publishers, property, classifieds, retail, education, health, travel = not_found. Protocol is new, ANZ adoption is near zero.
+message = client.messages.create(
+    max_tokens=1024,
+    messages=[
+        {
+            "role": "user",
+            "content": "Hello, Claude",
+        }
+    ],
+    model="claude-opus-4-6",
+)
+print(message.content)
+```
 
-Publishers:
-${list}
+## Requirements
 
-Respond ONLY with a JSON array of exactly 100 objects in order:
-[{"status":"live"|"not_found"|"possible","note":"max 8 words"}]`
-    : `You are an AdCP Brand Protocol expert. Assess whether each of these 100 Australian advertisers likely has a brand.json file at /.well-known/brand.json as of May 2026.
+Python 3.9+
 
-brand.json was introduced in late 2025. Adoption is extremely low globally. Rules: Global tech companies (Canva, Google, Amazon, Apple, Microsoft, Spotify, Netflix, Afterpay, Uber) = possible. All Australian retail, QSR, auto, FMCG, insurance, government, finance brands = not_found. Almost nothing is live.
+## Contributing
 
-Advertisers:
-${list}
+See [CONTRIBUTING.md](./CONTRIBUTING.md).
 
-Respond ONLY with a JSON array of exactly 100 objects in order:
-[{"status":"live"|"not_found"|"possible","note":"max 8 words"}]`;
+## License
 
-  try {
-    const message = await client.messages.create({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 8000,
-      messages: [{ role: "user", content: prompt }],
-    });
-
-    const text = message.content[0].text;
-    const clean = text.replace(/```json|```/g, "").trim();
-    const results = JSON.parse(clean);
-    res.status(200).json({ results, entities });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: err.message });
-  }
-}
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
