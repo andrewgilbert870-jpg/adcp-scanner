@@ -1,8 +1,9 @@
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return res.status(500).json({ error: "ANTHROPIC_API_KEY not configured" });
+ const apiKey = process.env.ANTHROPIC_API_KEY;
+console.log("API key present:", !!apiKey, "Length:", apiKey?.length);
+if (!apiKey) return res.status(500).json({ error: "ANTHROPIC_API_KEY not configured" });
 
   const { type } = req.body; // "publishers" or "advertisers"
 
