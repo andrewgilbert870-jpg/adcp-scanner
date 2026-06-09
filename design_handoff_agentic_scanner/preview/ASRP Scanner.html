@@ -1,0 +1,507 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ANZ Agentic Readiness Scanner — Systems That Decide</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400;1,700&family=Inter:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<style>
+  :root{
+    --obsidian:#0D0D0D; --surface:#141414; --raised:#1C1B1B; --warm:#141312;
+    --hairline:#2A2825; --hairline-soft:#1F1D1A;
+    --gold:#9A8B47; --gold-light:#BBA55F; --gold-bright:#C4A84A;
+    --gold-soft:rgba(154,139,71,.12); --gold-line:rgba(154,139,71,.22); --gold-faint:rgba(154,139,71,.06);
+    --off:#F0EDE8; --muted:#B8B2AE; --dim:#7A7773; --darker:#5A5752;
+    --confirmed:#6E9E78; --confirmed-deep:#4A7C59; --caution:#C9873A; --risk:#B85042;
+    --display:'Playfair Display',Georgia,serif;
+    --sans:'Inter',-apple-system,system-ui,sans-serif;
+    --mono:'Space Mono',ui-monospace,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html,body{background:#000;}
+  body{
+    font-family:var(--sans);
+    background:var(--obsidian);
+    color:var(--off);
+    -webkit-font-smoothing:antialiased;
+    min-height:100vh;
+  }
+  /* gold top-rule, fixed */
+  .top-rule{ position:fixed; left:0; right:0; top:0; height:4px; background:var(--gold); z-index:50; }
+  /* dot texture utility */
+  .dotted{
+    background-image:radial-gradient(circle, rgba(154,139,71,0.06) 1px, transparent 1px);
+    background-size:32px 32px;
+  }
+  a{ color:var(--gold-light); text-decoration:none; }
+  a:hover{ text-decoration:underline; }
+  ::-webkit-scrollbar{ width:6px; height:6px; }
+  ::-webkit-scrollbar-track{ background:var(--obsidian); }
+  ::-webkit-scrollbar-thumb{ background:var(--hairline); border-radius:0; }
+  ::-webkit-scrollbar-thumb:hover{ background:var(--gold-line); }
+
+  /* buttons — square, mono, hairline; hover brightens border to gold-line */
+  .std-btn{
+    font-family:var(--mono); cursor:pointer;
+    transition:border-color .2s cubic-bezier(.22,1,.36,1), color .2s, background .2s;
+  }
+  .std-btn:not(:disabled):hover{ border-color:var(--gold-line)!important; color:var(--muted)!important; }
+  .std-btn.active:hover{ color:var(--gold-bright)!important; }
+
+  .results-scroll{ scrollbar-width:thin; scrollbar-color:var(--hairline) var(--obsidian); }
+
+  @keyframes std-pulse{ 0%,100%{opacity:1;} 50%{opacity:.45;} }
+</style>
+</head>
+<body>
+<div class="top-rule"></div>
+<div id="root"></div>
+
+<script type="text/babel" data-presets="react">
+const { useState, useCallback } = React;
+
+/* ─── STATUS + DATA TOKENS ─────────────────────────────────────────────── */
+
+const STATUS = { PENDING:"pending", CHECKING:"checking", LIVE:"live", NOT_FOUND:"not_found", POSSIBLE:"possible" };
+
+const C = {
+  obsidian:"#0D0D0D", surface:"#141414", raised:"#1C1B1B", warm:"#141312",
+  hairline:"#2A2825", hairlineSoft:"#1F1D1A",
+  gold:"#9A8B47", goldLight:"#BBA55F", goldBright:"#C4A84A",
+  goldSoft:"rgba(154,139,71,.12)", goldLine:"rgba(154,139,71,.22)", goldFaint:"rgba(154,139,71,.06)",
+  off:"#F0EDE8", muted:"#B8B2AE", dim:"#7A7773", darker:"#5A5752",
+  confirmed:"#6E9E78", confirmedDeep:"#4A7C59", caution:"#C9873A", risk:"#B85042",
+};
+const F = {
+  display:"'Playfair Display',Georgia,serif",
+  sans:"'Inter',-apple-system,system-ui,sans-serif",
+  mono:"'Space Mono',ui-monospace,monospace",
+};
+
+const STATUS_CONFIG = {
+  [STATUS.PENDING]:   { label:"Queued",     color:C.darker,     dot:C.hairline },
+  [STATUS.CHECKING]:  { label:"Checking…",  color:C.goldLight,  dot:C.gold },
+  [STATUS.LIVE]:      { label:"Live",       color:C.confirmed,  dot:C.confirmed },
+  [STATUS.NOT_FOUND]: { label:"Not found",  color:C.dim,        dot:C.hairline },
+  [STATUS.POSSIBLE]:  { label:"Possible",   color:C.caution,    dot:C.caution },
+};
+
+// Country reads as a uniform mono tag — no rainbow; gold is reserved as a spice.
+const COUNTRY_CONFIG = {
+  AU:  { label:"AU" },
+  NZ:  { label:"NZ" },
+  ANZ: { label:"ANZ" },
+};
+
+/* ─── PREVIEW MOCK DATA ────────────────────────────────────────────────────
+   The production component fetches /api/scan. This static preview has no
+   backend, so it falls back to a deterministic mock that mirrors the real
+   finding: 1/100 publishers live (Yahoo AU), 0/100 advertisers live.
+   ─────────────────────────────────────────────────────────────────────── */
+
+const PUB_NAMES = [
+  ["news.com.au","News Corp Australia","News","AU"],["abc.net.au","ABC News","News","AU"],
+  ["nine.com.au","Nine","News","AU"],["smh.com.au","Sydney Morning Herald","News","AU"],
+  ["theage.com.au","The Age","News","AU"],["theguardian.com","Guardian Australia","News","AU"],
+  ["7news.com.au","7NEWS","News","AU"],["news.yahoo.com","Yahoo AU","Portal","AU"],
+  ["realestate.com.au","realestate.com.au","Property","AU"],["domain.com.au","Domain","Property","AU"],
+  ["carsales.com.au","carsales","Classifieds","AU"],["seek.com.au","SEEK","Classifieds","AU"],
+  ["gumtree.com.au","Gumtree","Classifieds","AU"],["afr.com","Financial Review","Finance/Business","AU"],
+  ["dailytelegraph.com.au","Daily Telegraph","News","AU"],["heraldsun.com.au","Herald Sun","News","AU"],
+  ["couriermail.com.au","Courier-Mail","News","AU"],["theaustralian.com.au","The Australian","News","AU"],
+  ["skynews.com.au","Sky News AU","News","AU"],["pedestrian.tv","Pedestrian.TV","Youth/Culture","AU"],
+  ["mamamia.com.au","Mamamia","Women's Lifestyle","AU"],["broadsheet.com.au","Broadsheet","Lifestyle","AU"],
+  ["news.com.au/finance","news.com.au Finance","Finance/Business","AU"],["kotaku.com.au","Kotaku AU","Gaming","AU"],
+  ["gizmodo.com.au","Gizmodo AU","Tech","AU"],["lifehacker.com.au","Lifehacker AU","Tech","AU"],
+  ["delicious.com.au","delicious.","Lifestyle","AU"],["bodyandsoul.com.au","Body+Soul","Health","AU"],
+  ["whimn.com.au","whimn","Women's Lifestyle","AU"],["finder.com.au","Finder","Finance/Business","AU"],
+  ["canstar.com.au","Canstar","Finance/Business","AU"],["ratecity.com.au","RateCity","Finance/Business","AU"],
+  ["nzherald.co.nz","NZ Herald","News","NZ"],["stuff.co.nz","Stuff","News","NZ"],
+  ["rnz.co.nz","RNZ","News","NZ"],["newshub.co.nz","Newshub","News","NZ"],
+  ["tvnz.co.nz","TVNZ","Video","NZ"],["odt.co.nz","Otago Daily Times","News","NZ"],
+  ["trademe.co.nz","Trade Me","Classifieds","NZ"],["thespinoff.co.nz","The Spinoff","News","NZ"],
+];
+const ADV_NAMES = [
+  ["woolworths.com.au","Woolworths","Retail","AU"],["coles.com.au","Coles","Retail","AU"],
+  ["bunnings.com.au","Bunnings","Retail","AU"],["jbhifi.com.au","JB Hi-Fi","Retail","AU"],
+  ["bigw.com.au","BIG W","Retail","AU"],["kmart.com.au","Kmart","Retail","AU"],
+  ["target.com.au","Target","Retail","AU"],["officeworks.com.au","Officeworks","Retail","AU"],
+  ["commbank.com.au","CommBank","Finance","AU"],["nab.com.au","NAB","Finance","AU"],
+  ["anz.com.au","ANZ","Finance","AU"],["westpac.com.au","Westpac","Finance","AU"],
+  ["telstra.com.au","Telstra","Telco","AU"],["optus.com.au","Optus","Telco","AU"],
+  ["mcdonalds.com.au","McDonald's","QSR","AU"],["kfc.com.au","KFC","QSR","AU"],
+  ["toyota.com.au","Toyota","Auto","AU"],["mazda.com.au","Mazda","Auto","AU"],
+  ["qantas.com","Qantas","Travel","AU"],["virginaustralia.com","Virgin Australia","Travel","AU"],
+  ["menulog.com.au","Menulog","Food/Delivery","AU"],["ubereats.com","Uber Eats","Food/Delivery","AU"],
+  ["amazon.com.au","Amazon AU","Retail","AU"],["ebay.com.au","eBay AU","Retail","AU"],
+  ["chemistwarehouse.com.au","Chemist Warehouse","Health","AU"],["priceline.com.au","Priceline","Health","AU"],
+];
+
+function pad(list, n, prefix){
+  const out = list.slice(0, n);
+  let i = out.length;
+  while(out.length < n){
+    const seed = list[i % list.length] || ["example.com","Brand","Retail","AU"];
+    out.push([`${prefix}${i}.com.au`, `${seed[1]} #${i}`, seed[2], seed[3]]);
+    i++;
+  }
+  return out.map((r, idx) => ({ rank: idx+1, domain: r[0], name: r[1], category: r[2], country: r[3] }));
+}
+
+function buildMock(scanType){
+  const isPub = scanType === "publishers";
+  const entities = isPub ? pad(PUB_NAMES, 100, "pub") : pad(ADV_NAMES, 100, "adv");
+  const results = entities.map((e) => {
+    if (isPub && e.name === "Yahoo AU")
+      return { status:"live", note:"adagents.json present · declares authorized seller agents" };
+    // a small handful of "possible" signals
+    if (isPub && (e.rank === 9 || e.rank === 33 || e.rank === 38))
+      return { status:"possible", note:"Parent group has declared agents — local endpoint unconfirmed" };
+    if (!isPub && (e.rank === 23 || e.rank === 9))
+      return { status:"possible", note:"Global brand.json exists — AU subdomain not yet serving" };
+    return { status:"not_found", note:"" };
+  });
+  return { entities, results };
+}
+
+/* ─── ROW ──────────────────────────────────────────────────────────────── */
+
+function Row({ item, isPublisher }){
+  const sc = STATUS_CONFIG[item.status];
+  const cc = isPublisher ? (COUNTRY_CONFIG[item.country] || COUNTRY_CONFIG.AU) : null;
+  const isLive = item.status === STATUS.LIVE;
+  const isPossible = item.status === STATUS.POSSIBLE;
+  const isChecking = item.status === STATUS.CHECKING;
+
+  return (
+    <div style={{
+      display:"flex", alignItems:"center", gap:11,
+      padding:"9px 16px",
+      background: isLive ? "rgba(110,158,120,.07)" : isPossible ? "rgba(201,135,58,.07)" : "transparent",
+      borderBottom:"1px solid "+C.hairlineSoft,
+      borderLeft:"2px solid "+(isLive ? C.confirmedDeep : isPossible ? C.caution : "transparent"),
+      transition:"background .3s",
+    }}>
+      <div style={{ width:22, textAlign:"right", fontFamily:F.mono, fontSize:10, color:C.darker, flexShrink:0 }}>
+        {String(item.rank).padStart(2,"0")}
+      </div>
+      <div style={{
+        width:7, height:7, borderRadius:"50%", flexShrink:0, background: sc.dot,
+        boxShadow: isLive ? "0 0 8px rgba(110,158,120,.8)" : isChecking ? "0 0 6px "+C.gold : "none",
+        animation: isChecking ? "std-pulse 1s infinite" : "none",
+      }} />
+      <div style={{ flex:1, minWidth:0 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
+          <span style={{
+            fontFamily:F.sans, fontSize:13, fontWeight:600, letterSpacing:"-0.005em",
+            color: isLive ? C.confirmed : isPossible ? C.caution : C.off,
+          }}>{item.name}</span>
+          <span style={{ fontFamily:F.mono, fontSize:10, color:C.darker }}>{item.domain}</span>
+          <span style={{
+            fontFamily:F.mono, fontSize:9, padding:"2px 7px", borderRadius:0,
+            textTransform:"uppercase", letterSpacing:".14em",
+            background:C.goldFaint, color:C.dim, border:"1px solid "+C.hairline,
+          }}>{item.category}</span>
+          {cc && (
+            <span style={{
+              fontFamily:F.mono, fontSize:9, padding:"2px 7px", borderRadius:0, fontWeight:700,
+              textTransform:"uppercase", letterSpacing:".12em",
+              background:"transparent", color:C.muted, border:"1px solid "+C.hairline,
+            }}>{cc.label}</span>
+          )}
+        </div>
+        {item.result?.note && item.status !== STATUS.PENDING && (
+          <div style={{
+            fontFamily:F.sans, fontSize:11, lineHeight:1.5, marginTop:4,
+            color: isLive ? C.confirmedDeep : isPossible ? "#9A7438" : C.darker,
+          }}>{item.result.note}</div>
+        )}
+      </div>
+      <div style={{
+        fontFamily:F.mono, fontSize:9, letterSpacing:".18em", fontWeight:700,
+        textTransform:"uppercase", color:sc.color, flexShrink:0, whiteSpace:"nowrap",
+      }}>{sc.label}</div>
+    </div>
+  );
+}
+
+/* ─── PANEL ────────────────────────────────────────────────────────────── */
+
+function Panel({ title, titleEm, subtitle, fileType, scanType, description }){
+  const [items, setItems] = useState([]);
+  const [running, setRunning] = useState(false);
+  const [started, setStarted] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [filter, setFilter] = useState("all");
+  const [countryFilter, setCountryFilter] = useState("all");
+  const isPublisher = scanType === "publishers";
+
+  const runScan = useCallback(async () => {
+    setRunning(true); setStarted(true); setProgress(0); setFilter("all"); setCountryFilter("all");
+    const interval = setInterval(() => setProgress(p => Math.min(p + 1, 88)), 320);
+    let data;
+    try {
+      const res = await fetch("/api/scan", {
+        method:"POST",
+        headers:{ "Content-Type":"application/json" },
+        body: JSON.stringify({ type: scanType }),
+      });
+      data = await res.json();
+      if (data.error) throw new Error(data.error);
+    } catch (e) {
+      // Preview fallback — no backend reachable. Simulate the call's latency.
+      await new Promise(r => setTimeout(r, 2600));
+      data = buildMock(scanType);
+    }
+    clearInterval(interval); setProgress(100);
+    setItems(data.entities.map((e, i) => {
+      const r = data.results[i] || { status:"not_found", note:"" };
+      return { ...e, status: r.status === "live" ? STATUS.LIVE : r.status === "possible" ? STATUS.POSSIBLE : STATUS.NOT_FOUND, result: r };
+    }));
+    setRunning(false);
+  }, [scanType]);
+
+  const liveCount = items.filter(i => i.status === STATUS.LIVE).length;
+  const possibleCount = items.filter(i => i.status === STATUS.POSSIBLE).length;
+  const done = started && !running && items.length === 100;
+
+  const filtered = items.filter(item => {
+    const matchCountry = !isPublisher || countryFilter === "all" || item.country === countryFilter;
+    const matchStatus = filter === "all" ? true
+      : filter === "live" ? item.status === STATUS.LIVE
+      : filter === "possible" ? (item.status === STATUS.LIVE || item.status === STATUS.POSSIBLE)
+      : true;
+    return matchCountry && matchStatus;
+  });
+
+  const tab = (active, accent) => ({
+    padding:"6px 10px", borderRadius:0, fontSize:9, fontFamily:F.mono, fontWeight:700,
+    letterSpacing:".14em", textTransform:"uppercase", cursor:"pointer",
+    background: active ? C.goldSoft : "transparent",
+    color: active ? C.goldBright : C.dim,
+    border:"1px solid "+(active ? C.goldLine : C.hairline),
+  });
+
+  return (
+    <div style={{ flex:1, minWidth:0, display:"flex", flexDirection:"column" }}>
+      {/* Panel header — card with 2px gold top accent */}
+      <div style={{
+        background:C.surface, border:"1px solid "+C.hairline, borderTop:"2px solid "+C.gold,
+        padding:"22px 22px 18px", borderBottom:"none",
+      }}>
+        <div style={{ fontFamily:F.mono, fontSize:9, letterSpacing:".22em", color:C.dim, textTransform:"uppercase", marginBottom:9 }}>
+          {subtitle}
+        </div>
+        <div style={{ fontFamily:F.display, fontSize:25, fontWeight:700, color:C.off, letterSpacing:"-0.02em", lineHeight:1.05, marginBottom:7 }}>
+          {title} <em style={{ fontStyle:"italic", color:C.gold }}>{titleEm}</em>
+        </div>
+        <div style={{ fontFamily:F.mono, fontSize:10, color:C.dim, marginBottom:16, letterSpacing:".01em" }}>
+          <span style={{ color:C.goldLight }}>/.well-known/{fileType}</span>
+          {"  ·  "}{description}
+        </div>
+
+        {/* Stats */}
+        {started && (
+          <div style={{ display:"flex", gap:24, marginBottom:14, paddingTop:4, borderTop:"1px solid "+C.hairlineSoft }}>
+            {[
+              { v: liveCount, label:"Live", color:C.confirmed },
+              { v: possibleCount, label:"Possible", color:C.caution },
+              { v: done ? 100 - liveCount - possibleCount : "—", label:"Not found", color:C.dim },
+            ].map(s => (
+              <div key={s.label} style={{ display:"flex", alignItems:"baseline", gap:7, marginTop:12 }}>
+                <span style={{ fontFamily:F.display, fontSize:30, fontWeight:700, color:s.color, lineHeight:1 }}>{s.v}</span>
+                <span style={{ fontFamily:F.mono, fontSize:9, color:C.dim, letterSpacing:".14em", textTransform:"uppercase" }}>{s.label}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Progress */}
+        {started && (
+          <div style={{ marginBottom:14 }}>
+            <div style={{ height:2, background:C.hairlineSoft }}>
+              <div style={{
+                height:"100%",
+                background: liveCount > 0 ? C.confirmedDeep : C.gold,
+                width: progress+"%", transition:"width .3s ease",
+              }} />
+            </div>
+            <div style={{ fontFamily:F.mono, fontSize:9, color:C.dim, marginTop:6, letterSpacing:".12em", textTransform:"uppercase" }}>
+              {running ? "Processing… "+progress+"%" : "Complete"}
+            </div>
+          </div>
+        )}
+
+        {/* Controls */}
+        <div style={{ display:"flex", gap:7, flexWrap:"wrap", alignItems:"center" }}>
+          <button onClick={runScan} disabled={running} className="std-btn" style={{
+            padding:"8px 18px", background: running ? "transparent" : C.goldSoft,
+            color: running ? C.dim : C.goldBright, border:"1px solid",
+            borderColor: running ? C.hairline : C.goldLine, borderRadius:0,
+            fontSize:9, fontWeight:700, letterSpacing:".18em", textTransform:"uppercase",
+            cursor: running ? "not-allowed" : "pointer",
+          }}>
+            {running ? "Scanning…" : started ? "Re-scan" : "Run Scan"}
+          </button>
+
+          {isPublisher && started && ["all","AU","NZ","ANZ"].map(c => (
+            <button key={c} onClick={() => setCountryFilter(c)}
+              className={"std-btn"+(countryFilter===c?" active":"")} style={tab(countryFilter===c)}>
+              {c === "all" ? "All" : c}
+            </button>
+          ))}
+
+          {started && [{k:"all",l:"All"},{k:"live",l:"Live"},{k:"possible",l:"Live + Possible"}].map(f => (
+            <button key={f.k} onClick={() => setFilter(f.k)}
+              className={"std-btn"+(filter===f.k?" active":"")} style={tab(filter===f.k)}>
+              {f.l}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Results */}
+      <div className="results-scroll" style={{
+        flex:1, border:"1px solid "+C.hairline, borderTop:"1px solid "+C.hairlineSoft,
+        background:C.obsidian, maxHeight:600, overflowY:"auto",
+      }}>
+        {!started && (
+          <div style={{ padding:"44px 20px", textAlign:"center", color:C.darker, fontFamily:F.mono, fontSize:11, letterSpacing:".04em" }}>
+            Press Run Scan to check all 100 {isPublisher ? "publishers" : "advertisers"}
+          </div>
+        )}
+        {started && running && items.length === 0 && (
+          <div style={{ padding:"44px 20px", textAlign:"center", color:C.goldLight, fontFamily:F.mono, fontSize:11, letterSpacing:".06em" }}>
+            One API call in progress…
+          </div>
+        )}
+        {filtered.map(item => <Row key={item.rank+"-"+item.domain} item={item} isPublisher={isPublisher} />)}
+        {done && filtered.length === 0 && (
+          <div style={{ padding:"20px", textAlign:"center", color:C.dim, fontFamily:F.mono, fontSize:11 }}>No results match filter</div>
+        )}
+      </div>
+
+      {/* Summary */}
+      {done && (
+        <div style={{
+          marginTop:10, padding:"14px 18px",
+          background:C.surface, border:"1px solid "+C.hairline, borderLeft:"3px solid "+C.gold,
+          fontFamily:F.sans, fontSize:12, color:C.muted, lineHeight:1.7,
+        }}>
+          {liveCount === 0 && possibleCount === 0
+            ? `Zero of the top 100 ANZ ${isPublisher ? "publishers" : "advertisers"} have ${fileType} live. ${isPublisher ? "The supply side is currently unreachable by AdCP buyer agents." : "Every brand is invisible to AdCP buyer agents."}`
+            : <span><strong style={{color:C.confirmed,fontWeight:700}}>{liveCount} confirmed live</strong><span style={{color:C.dim}}> · </span><span style={{color:C.caution}}>{possibleCount} possible</span><span style={{color:C.dim}}> · {100 - liveCount - possibleCount} not found</span></span>
+          }
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── PAGE ─────────────────────────────────────────────────────────────── */
+
+function Home(){
+  return (
+    <div style={{ background:C.obsidian, minHeight:"100vh", color:C.muted, paddingBottom:64 }}>
+      {/* Masthead */}
+      <div className="dotted" style={{ background:C.surface, borderBottom:"1px solid "+C.hairline, padding:"30px 36px 26px" }}>
+        <div style={{ maxWidth:1400, margin:"0 auto" }}>
+          <div style={{ display:"flex", alignItems:"flex-end", justifyContent:"space-between", flexWrap:"wrap", gap:20 }}>
+            <div style={{ maxWidth:680 }}>
+              <div style={{ display:"flex", alignItems:"center", gap:14, marginBottom:18 }}>
+                <img src="logo-transparent.png" alt="Systems That Decide" style={{ height:26, width:"auto", display:"block" }} />
+                <span style={{ fontFamily:F.mono, fontSize:9, letterSpacing:".22em", color:C.dim, textTransform:"uppercase" }}>
+                  systemsthatdecide.io
+                </span>
+              </div>
+              <div style={{ fontFamily:F.mono, fontSize:10, letterSpacing:".22em", color:C.gold, textTransform:"uppercase", marginBottom:14 }}>
+                ANZ Readiness <span style={{ color:C.darker }}>·</span> <span style={{ color:C.dim }}>Live Scanner</span>
+              </div>
+              <h1 style={{ margin:0, fontFamily:F.display, fontSize:44, fontWeight:700, color:C.off, letterSpacing:"-0.025em", lineHeight:1.08 }}>
+                ANZ Agentic <em style={{ fontStyle:"italic", color:C.gold }}>Readiness</em> Scanner
+              </h1>
+              <p style={{ margin:"20px 0 0", fontFamily:F.sans, fontSize:14, color:C.muted, lineHeight:1.65, maxWidth:660 }}>
+                Live intelligence on which ANZ publishers and advertisers have implemented the Ad Context Protocol.
+                Supply side checks <span style={{ fontFamily:F.mono, fontSize:12.5, color:C.goldLight }}>adagents.json</span>.
+                Demand side checks <span style={{ fontFamily:F.mono, fontSize:12.5, color:C.goldLight }}>brand.json</span>.
+                Run each scan independently. Data sourced from Ipsos iris, Nielsen Ad Intel, and Similarweb (May 2026).
+              </p>
+            </div>
+            <div style={{ fontFamily:F.mono, fontSize:9, color:C.dim, lineHeight:2.1, textAlign:"right", textTransform:"uppercase", letterSpacing:".1em" }}>
+              <div><span style={{color:C.darker}}>Protocol</span> &nbsp;Ad Context Protocol</div>
+              <div><span style={{color:C.darker}}>Market</span> &nbsp;Australia + New Zealand</div>
+              <div><span style={{color:C.darker}}>Sources</span> &nbsp;Ipsos · Nielsen · Similarweb</div>
+              <div><span style={{color:C.darker}}>Updated</span> &nbsp;May 2026</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Context strip */}
+      <div style={{ background:C.warm, borderBottom:"1px solid "+C.hairline, padding:"13px 36px" }}>
+        <div style={{ maxWidth:1400, margin:"0 auto", display:"flex", gap:40, flexWrap:"wrap" }}>
+          {[
+            { label:"Protocol launched", value:"Oct 2025" },
+            { label:"ANZ confirmed live (supply)", value:"1 / 100" },
+            { label:"Only confirmed ANZ seller", value:"Yahoo AU" },
+            { label:"IAB ARTF status", value:"In development" },
+          ].map(s => (
+            <div key={s.label} style={{ display:"flex", alignItems:"baseline", gap:8 }}>
+              <span style={{ fontFamily:F.mono, fontSize:9, color:C.dim, letterSpacing:".14em", textTransform:"uppercase" }}>{s.label}</span>
+              <span style={{ fontFamily:F.mono, fontSize:11, color:C.goldLight, fontWeight:700, letterSpacing:".04em" }}>{s.value}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Two panels */}
+      <div style={{ maxWidth:1400, margin:"28px auto 0", padding:"0 36px", display:"flex", gap:24, alignItems:"flex-start", flexWrap:"wrap" }}>
+        <div style={{ flex:1, minWidth:360 }}>
+          <Panel
+            title="Publisher" titleEm="Readiness"
+            subtitle="Supply Side · Top 100 ANZ Publishers"
+            fileType="adagents.json" scanType="publishers"
+            description="Declares authorized seller agents for AI buyer discovery"
+          />
+        </div>
+        <div style={{ flex:1, minWidth:360 }}>
+          <Panel
+            title="Advertiser" titleEm="Readiness"
+            subtitle="Demand Side · Top 100 AU Advertisers"
+            fileType="brand.json" scanType="advertisers"
+            description="Makes brands discoverable and legible to AI buyer agents"
+          />
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div style={{ maxWidth:1400, margin:"28px auto 0", padding:"0 36px" }}>
+        <div style={{
+          padding:"16px 20px", background:C.surface,
+          border:"1px solid "+C.hairline, borderLeft:"3px solid "+C.gold,
+          fontFamily:F.sans, fontSize:11, color:C.dim, lineHeight:1.9,
+        }}>
+          <span style={{ fontFamily:F.mono, fontSize:9, letterSpacing:".18em", textTransform:"uppercase", color:C.gold }}>Methodology </span>
+          <span style={{ color:C.darker }}>— </span>
+          Browser CORS policy prevents direct HTTP endpoint checks. Results use Claude's knowledge of AdCP founding members, public adoption announcements, and protocol specification as of May 2026.
+          {" "}For live verification: <span style={{ fontFamily:F.mono, fontSize:11, color:C.goldLight }}>curl https://[domain]/.well-known/adagents.json</span>
+          {" "}or <span style={{ fontFamily:F.mono, fontSize:11, color:C.goldLight }}>curl https://[domain]/.well-known/brand.json</span>
+          {"  ·  "}
+          <a href="https://adcontextprotocol.org" target="_blank" rel="noopener noreferrer">adcontextprotocol.org</a>
+          {"  ·  "}
+          <a href="https://systemsthatdecide.io" target="_blank" rel="noopener noreferrer">systemsthatdecide.io</a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<Home />);
+</script>
+</body>
+</html>
