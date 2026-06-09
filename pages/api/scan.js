@@ -1,9 +1,8 @@
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
- const apiKey = process.env.ANTHROPIC_API_KEY;
-console.log("API key present:", !!apiKey, "Length:", apiKey?.length);
-if (!apiKey) return res.status(500).json({ error: "ANTHROPIC_API_KEY not configured" });
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return res.status(500).json({ error: "ANTHROPIC_API_KEY not configured" });
 
   const { type } = req.body; // "publishers" or "advertisers"
 
@@ -223,52 +222,44 @@ if (!apiKey) return res.status(500).json({ error: "ANTHROPIC_API_KEY not configu
       : `${i + 1}. ${e.domain} — ${e.name} (${e.category})`
   ).join("\n");
 
-  const prompt = isPublisher
-    ? `You are an AdCP expert. Assess whether each of these 100 ANZ publishers likely has an adagents.json file at /.well-known/adagents.json as of May 2026.
 
-Known AdCP founding/launch members (likely live): Yahoo (au.yahoo.com), PubMatic, Magnite, Scope3, Swivel, Triton Digital, Optable, Kargo, Raptive, LG Ad Solutions, The Weather Company, AccuWeather, Butler/Till.
 
-Rules: Yahoo Australia = live. Major global platforms (Google, YouTube, Facebook, TikTok, Reddit, Amazon, Spotify, Apple, LinkedIn, X) = possible. All ANZ news publishers, property, classifieds, retail, education, health, travel = not_found. Protocol is new, ANZ adoption is near zero.
+  // Build per-entity status overrides for publishers
+  const PUBLISHER_OVERRIDES = {
+    "au.yahoo.com": { status: "live", note: "Confirmed AdCP founding member" },
+    "pubmatic.com": { status: "live", note: "Confirmed AdCP founding member" },
+    "magnite.com":  { status: "live", note: "Confirmed AdCP launch member" },
+    "scope3.com":   { status: "live", note: "Confirmed AdCP founding member" },
+    "tritondigital.com": { status: "live", note: "Confirmed AdCP founding member" },
+    "youtube.com":   { status: "possible", note: "Global platform, possible early adopter" },
+    "google.com.au": { status: "possible", note: "Global platform, possible early adopter" },
+    "facebook.com":  { status: "possible", note: "Global platform, possible early adopter" },
+    "instagram.com": { status: "possible", note: "Global platform, possible early adopter" },
+    "tiktok.com":    { status: "possible", note: "Global platform, possible early adopter" },
+    "reddit.com":    { status: "possible", note: "Global platform, possible early adopter" },
+    "amazon.com.au": { status: "possible", note: "Global platform, possible early adopter" },
+    "apple.com":     { status: "possible", note: "Global platform, possible early adopter" },
+    "spotify.com":   { status: "possible", note: "Global platform, possible early adopter" },
+    "linkedin.com":  { status: "possible", note: "Global platform, possible early adopter" },
+    "x.com":         { status: "possible", note: "Global platform, possible early adopter" },
+  };
 
-Publishers:
-${list}
+  const ADVERTISER_OVERRIDES = {
+    "canva.com":     { status: "possible", note: "Tech-forward, possible early adopter" },
+    "google.com.au": { status: "possible", note: "Global tech, possible early adopter" },
+    "amazon.com.au": { status: "possible", note: "Global tech, possible early adopter" },
+    "apple.com":     { status: "possible", note: "Global tech, possible early adopter" },
+    "microsoft.com": { status: "possible", note: "Global tech, possible early adopter" },
+    "spotify.com":   { status: "possible", note: "Global tech, possible early adopter" },
+    "netflix.com":   { status: "possible", note: "Global tech, possible early adopter" },
+    "afterpay.com":  { status: "possible", note: "Fintech, possible early adopter" },
+    "uber.com":      { status: "possible", note: "Global tech, possible early adopter" },
+  };
 
-Respond ONLY with a JSON array of exactly 100 objects in order:
-[{"status":"live"|"not_found"|"possible","note":"max 8 words"}]`
-    : `You are an AdCP Brand Protocol expert. Assess whether each of these 100 Australian advertisers likely has a brand.json file at /.well-known/brand.json as of May 2026.
+  const overrides = isPublisher ? PUBLISHER_OVERRIDES : ADVERTISER_OVERRIDES;
 
-brand.json was introduced in late 2025. Adoption is extremely low globally. Rules: Global tech companies (Canva, Google, Amazon, Apple, Microsoft, Spotify, Netflix, Afterpay, Uber) = possible. All Australian retail, QSR, auto, FMCG, insurance, government, finance brands = not_found. Almost nothing is live.
+  // Apply overrides directly, no AI needed for known entities
+  const knownResults = entities.map(e => overrides[e.domain] || { status: "not_found", note: "No AdCP adoption evidence" });
 
-Advertisers:
-${list}
-
-Respond ONLY with a JSON array of exactly 100 objects in order:
-[{"status":"live"|"not_found"|"possible","note":"max 8 words"}]`;
-
-  try {
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 8000,
-        messages: [{ role: "user", content: prompt }],
-      }),
-    });
-
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error?.message || JSON.stringify(data));
-
-    const text = data.content[0].text;
-    const clean = text.replace(/```json|```/g, "").trim();
-    const results = JSON.parse(clean);
-    res.status(200).json({ results, entities });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: err.message });
-  }
+  res.status(200).json({ results: knownResults, entities });
 }
